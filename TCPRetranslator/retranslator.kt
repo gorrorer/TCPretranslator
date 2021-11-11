@@ -1,28 +1,26 @@
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketException
 
-class TCPRetranslator(_receiverAddress: String, _receiverPort: Int, _localPort: Int) {
+class TCPRetranslator() {
 
-    private val receiverAddress = _receiverAddress
-    private val receiverPort = _receiverPort
-    private val localPort = _localPort
+    lateinit var transmitter: Socket
+    lateinit var receiver: Socket
 
 
-    private fun receiveSortedData(localport: Int): MutableMap<Int, Int> {
+    private fun receiveSortedData(transmitter: Socket): MutableMap<Int, Int> {
         val byteMap = mutableMapOf<Int, Int>()
         val range = 97..122
         for (key in range) {
             byteMap[key] = 0
         }
-        val server = ServerSocket(localport)
-        val client = server.accept()
-        val inputStream = client.getInputStream()
+        val inputStream = transmitter.getInputStream()
         var data = inputStream.read()
         while (data in range){
             byteMap[data] = byteMap[data]!!.inc()
             data = inputStream.read()
         }
-        client.close()
+        transmitter.close()
         inputStream.close()
         return byteMap
     }
@@ -39,21 +37,46 @@ class TCPRetranslator(_receiverAddress: String, _receiverPort: Int, _localPort: 
         return byteList.toByteArray()
     }
 
-    private fun transmitData(receiverAddress: String, receiverPort: Int, data: ByteArray): Boolean {
-        val connection = Socket(receiverAddress, receiverPort)
-        val outputStream = connection.getOutputStream()
+    private fun transmitData(receiver: Socket, data: ByteArray): Boolean {
+        val outputStream = receiver.getOutputStream()
         outputStream.write(data)
         outputStream.flush()
-        connection.close()
+        receiver.close()
         outputStream.close()
         return true
     }
 
-    fun retranslate(): Boolean {
-        val sortedMap = receiveSortedData(localPort)
-        val data = assembleByteArray(sortedMap)
-        transmitData(receiverAddress, receiverPort, data)
-        return true
+    fun connectReceiver(type: String, clientAddress: String, clientPort: Int) {
+        receiver = establishConnection(type, clientAddress, clientPort)
+    }
+
+    fun connectReceiver(type: String, serverPort: Int) {
+        receiver = establishConnection(type, "", serverPort)
+    }
+
+    fun connectTransmitter(type: String, clientAddress: String, clientPort: Int) {
+        transmitter = establishConnection(type, clientAddress, clientPort)
+    }
+
+    fun connectTransmitter(type: String, serverPort: Int) {
+        transmitter = establishConnection(type, "", serverPort)
+    }
+
+    private fun establishConnection(type: String, address: String, port: Int): Socket {
+        when (type) {
+            "server" -> {
+                return ServerSocket(port).accept()
+            }
+            "client" -> {
+                return Socket(address, port)
+            }
+        }
+        throw SocketException()
+    }
+
+    fun retranslate() {
+        val data = assembleByteArray(receiveSortedData(transmitter))
+        transmitData(receiver, data)
     }
 
 }
